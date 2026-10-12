@@ -123,8 +123,8 @@ def load_artifacts(artifacts_dir: Path) -> dict:
 
     import pickle
 
-    top_k_indices = np.load(artifacts_dir / "top_k_indices.npy", allow_pickle=True)
-    top_k_scores = np.load(artifacts_dir / "top_k_scores.npy", allow_pickle=True)
+    top_k_indices = np.load(artifacts_dir / "top_k_indices.npy", allow_pickle=True).astype(np.int32)
+    top_k_scores = np.load(artifacts_dir / "top_k_scores.npy", allow_pickle=True).astype(np.float32)
     track_lookup = pd.read_pickle(artifacts_dir / "track_lookup.pkl")
     track_ids = np.load(artifacts_dir / "track_ids.npy", allow_pickle=True)
 
