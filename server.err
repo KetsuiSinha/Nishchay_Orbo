@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "C:\Users\nishc\Downloads\Nishchay_Orbo\backend\main.py", line 17, in <module>
+    track_ids = np.load('track_ids.npy', allow_pickle=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nishc\Downloads\Nishchay_Orbo\venv\Lib\site-packages\numpy\lib\_npyio_impl.py", line 454, in load
+    fid = stack.enter_context(open(os.fspath(file), "rb"))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'track_ids.npy'
