@@ -102,7 +102,7 @@ export function TrackRow({ track, rank, onNavigate, showTier = true }: TrackRowP
           e.stopPropagation();
           useSeeds.getState().toggleSaved(track);
         }}
-        className="shrink-0 rounded-full p-1.5 text-secondary opacity-0 transition-opacity hover:text-primary focus-visible:opacity-100 group-hover:opacity-100"
+        className="shrink-0 rounded-full p-1.5 text-secondary opacity-100 transition-opacity hover:text-primary focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
       >
         {isSaved ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent-green)">

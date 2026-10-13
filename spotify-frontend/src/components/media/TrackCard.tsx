@@ -25,7 +25,7 @@ export function TrackCard({ track, onNavigate }: TrackCardProps) {
       onKeyDown={(e) => e.key === "Enter" && (play(track), onNavigate?.(track.track_id))}
     >
       <div className="relative mb-3">
-        <CoverArt track={track} size="xl" rounded="rounded" className="w-full" />
+        <CoverArt track={track} size="xl" rounded="rounded" fill />
         <button
           aria-label={`Play ${track.track_name}`}
           onClick={(e) => {

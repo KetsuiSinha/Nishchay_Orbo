@@ -1,5 +1,6 @@
 import { genreGradient } from "../../lib/colorFromSlug";
 import { cn, primaryArtist } from "../../lib/utils";
+import { CoverArt } from "../media/CoverArt";
 import type { Track } from "../../types";
 
 interface GenreTileProps {
@@ -28,13 +29,12 @@ export function GenreTile({ genre, count, hotCount, tracks = [], onClick, classN
       aria-label={`Browse ${genre}`}
     >
       {thumb && (
-        <img
-          src={thumb.artwork_url ?? ""}
-          alt=""
+        <span
           aria-hidden
-          loading="lazy"
-          className="absolute -bottom-3 -right-3 h-[62%] w-[62%] rotate-[25deg] rounded-sm object-cover shadow-sheet transition-transform duration-ui group-hover:scale-105"
-        />
+          className="absolute -bottom-3 -right-3 block h-[62%] w-[62%] rotate-[25deg] overflow-hidden rounded-sm shadow-sheet"
+        >
+          <CoverArt track={thumb} size="md" rounded="rounded-none" fill />
+        </span>
       )}
       <span className="absolute left-3 top-3 z-10 pr-16 font-display text-lg font-extrabold capitalize leading-tight tracking-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">
         {genre.replace(/-/g, " ")}

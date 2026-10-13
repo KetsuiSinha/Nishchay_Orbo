@@ -10,10 +10,12 @@ interface CoverArtProps {
   size?: keyof typeof SIZES;
   rounded?: string;
   className?: string;
+  /** Stretch to the parent's width (aspect-square) instead of a fixed pixel size. */
+  fill?: boolean;
 }
 
 /** Cover with fallback chain: scraped URL → generated SVG → neutral tile. Never empty. */
-export function CoverArt({ track, size = "sm", rounded = "rounded-sm", className }: CoverArtProps) {
+export function CoverArt({ track, size = "sm", rounded = "rounded-sm", className, fill }: CoverArtProps) {
   const px = SIZES[size] ?? 48;
 
   const src = useMemo(() => {
@@ -34,12 +36,13 @@ export function CoverArt({ track, size = "sm", rounded = "rounded-sm", className
       src={src}
       alt={`${track.track_name} cover`}
       loading="lazy"
-      width={px}
-      height={px}
-      style={{ width: px, height: px }}
+      width={fill ? undefined : px}
+      height={fill ? undefined : px}
+      style={fill ? undefined : { width: px, height: px }}
       className={cn(
         "shrink-0 bg-highlight object-cover",
         rounded,
+        fill && "aspect-square h-auto w-full",
         className
       )}
     />

@@ -127,12 +127,13 @@ export default function Home() {
           </div>
           {/* Art collage */}
           <div className="absolute -right-4 bottom-0 top-0 hidden w-2/5 items-center justify-end gap-2 sm:flex" aria-hidden>
-            {madeForYou.slice(0, 3).map((t, i) => (
+            {madeForYou.filter((t) => t.artwork_url).slice(0, 3).map((t, i) => (
               <img
                 key={t.track_id}
                 src={t.artwork_url ?? ""}
                 alt=""
-                className={`h-28 w-28 rounded object-cover shadow-sheet ${i === 1 ? "rotate-6 translate-y-6" : i === 2 ? "rotate-12 translate-y-2" : "-rotate-6"}`}
+                loading="lazy"
+                className={`h-24 w-24 rounded object-cover shadow-sheet sm:h-28 sm:w-28 ${i === 1 ? "rotate-6 translate-y-6" : i === 2 ? "rotate-12 translate-y-2" : "-rotate-6"}`}
               />
             ))}
           </div>
