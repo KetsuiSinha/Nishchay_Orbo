@@ -1,26 +1,24 @@
 # DEPLOY ONLINE — Free Hosting Guide
 
-Deploy the full stack for **$0**. Total time: ~20 minutes.
+Deploy the full stack for **$0**. Total time: ~15 minutes.
 
-| Piece | Recommended (free) | Why |
+> **Read this first:** the backend can now serve the built frontend itself (single origin — no CORS, no env vars). That's **Option 1** and is the recommended path. Running frontend and backend as separate services still works (**Option 2**) but needs two env vars wired correctly.
+
+| Option | What it deploys | Config surface |
 |---|---|---|
-| Backend API (FastAPI) | **Render** — free web service | Deploys straight from GitHub, 512 MB RAM (fits our artifacts after int32/float32 downcast), HTTPS included |
-| Frontend (React/Vite) | **Vercel** — free Hobby project | Zero-config Vite builds, global CDN, SPA rewrites included (`vercel.json` is already in the repo) |
-| Album-art scraper | **Your local machine** (one-time) | Scrapes iTunes/Deezer, produces `artwork_cache.json` which you commit — the deployed API then serves real covers |
-
-Alternatives if Render doesn't suit you: **Koyeb** (free service, 512 MB) and **Hugging Face Spaces** (free Docker, 16 GB RAM — instructions at the bottom).
+| **1. Single Render service** (recommended) | API + frontend from one container | No env vars (just `PYTHON_VERSION`) |
+| 2. Split: Render API + Vercel frontend | Frontend on Vercel CDN, API on Render | `VITE_API_URL` + `CORS_ORIGINS` must match |
 
 ---
 
 ## 0. Prerequisites
 
-- A GitHub account
-- This project pushed to a GitHub repository
-- The precomputed artifacts exist locally (they are generated once by `npm run precompute`)
+- A GitHub account and this project pushed to a GitHub repository
+- Precomputed artifacts generated once locally (`npm run precompute`)
 
-## 1. Commit the large files (important)
+## 1. Commit the large files (critical)
 
-`.gitignore` excludes the model artifacts and dataset by default. The deployed backend needs them, so force-add:
+`.gitignore` excludes the model artifacts and dataset by default — the deployed backend needs them. Also note: the Python `lib/` ignore rule is now anchored to the repo root, so `spotify-frontend/src/lib/` is committed normally.
 
 ```bash
 git add -f dataset.csv
@@ -34,144 +32,100 @@ git push
 ```
 
 Notes:
-- Biggest file is `top_k_indices.npy` ≈ 91 MB — under GitHub's 100 MB hard limit, so no LFS needed for Render/Koyeb.
-- Don't commit `venv/`, `node_modules/`, `dist/` (already ignored).
+- Biggest file is `top_k_indices.npy` ≈ 91 MB — under GitHub's 100 MB hard limit.
+- Artifacts load into ~110 MB RAM (int32/float32 downcast) — fits every free tier listed here.
 
 ### 1b. (Optional but recommended) Scrape real album covers first
-
-Deployed apps look far better with real artwork. Run locally before pushing:
 
 ```bash
 cd backend
 .\venv\Scripts\python.exe scripts\scrape_artwork.py --limit 1000 --delay 0.1
 ```
 
-This seeds `backend/artwork_cache.json` (free iTunes/Deezer lookup, no API keys). Tracks without a scraped cover automatically get deterministic generated SVG covers in the UI — nothing ever renders empty.
+Free iTunes/Deezer lookup, no API keys, incrementally cached to `backend/artwork_cache.json`. Tracks without a scraped cover get deterministic generated SVG covers — nothing ever renders empty.
 
-## 2. Backend → Render (free)
+## 2. Option 1 (recommended): ONE Render service serves everything
 
-1. Go to **dashboard.render.com** → **New → Web Service** → connect your GitHub repo.
+The backend automatically serves `spotify-frontend/dist` when it exists, so one container = API + app on one origin. No CORS. No API URL env var.
+
+1. **dashboard.render.com** → **New → Web Service** → connect your GitHub repo.
 2. Settings:
-   - **Name:** `wrapped-api` (anything)
-   - **Root Directory:** `backend`
-   - **Runtime:** Python 3
-   - **Build Command:**
-     ```
-     pip install -r requirements.txt
-     ```
-   - **Start Command:**
-     ```
-     uvicorn app.main:app --host 0.0.0.0 --port $PORT
-     ```
+   - **Runtime:** Docker
+   - **Dockerfile Path:** `backend/Dockerfile`
+   - **Docker Context:** repo root (leave default if it shows the root)
    - **Instance Type:** Free
-3. Under **Environment**, add:
+3. Environment (optional but nice): `PYTHON_VERSION=3.12.10`
+4. **Create Web Service.** First build ~5–8 min (compiles the frontend inside Docker). Live at `https://wrapped-api-xxxx.onrender.com`.
 
-   | Key | Value |
-   |---|---|
-   | `PYTHON_VERSION` | `3.12.10` |
-   | `CORS_ORIGINS` | `["https://YOUR-APP.vercel.app"]` — must be valid JSON array; add your frontend URL (set in step 3, come back and edit) |
+The Docker build is multi-stage: Node compiles the SPA → Python image serves it via FastAPI. Because the app and API share an origin, the frontend talks to `/api/v1/...` relatively — no CORS preflights at all.
 
-   > ⚠️ `CORS_ORIGINS` is parsed as JSON. It must be `["https://..."]` with quotes and brackets — a bare URL will crash startup.
-4. **Create Web Service.** First build takes ~5 min. Your API goes live at `https://wrapped-api-xxxx.onrender.com`.
-5. Verify: open `https://wrapped-api-xxxx.onrender.com/health` → `{"status":"ok"}`.
+**One URL does everything:** open the service URL → you get the app; `/docs` → Swagger; `/health` → probe.
 
-**Free-tier behaviour:** the service sleeps after 15 min without traffic. First request after a nap takes ~50 s (spin-up + artifact load). Every later request is <100 ms. See §5 for a free keep-alive.
+**Free-tier behaviour:** sleeps after 15 min idle; first request after a nap takes ~50 s. Keep it warm with cron-job.org (§5).
 
-## 3. Frontend → Vercel (free)
+## 3. Option 2: Split deploy (Render API + Vercel frontend)
 
-1. Go to **vercel.com** → **Add New → Project** → import the same GitHub repo.
-2. Settings:
-   - **Framework Preset:** Vite (auto-detected)
-   - **Root Directory:** `spotify-frontend`
-   - **Build Command:** `npm run build` (default)
-   - **Output Directory:** `dist` (default)
-3. Under **Environment Variables**, add:
+### 3a. Backend on Render
 
-   | Key | Value |
-   |---|---|
-   | `VITE_API_URL` | `https://wrapped-api-xxxx.onrender.com` (your Render URL, **no trailing slash**) |
-
-4. **Deploy.** Your app goes live at `https://YOUR-APP.vercel.app`.
-
-SPA routing is already handled — `spotify-frontend/vercel.json` rewrites all routes to `index.html`, so `/home`, `/search`, etc. survive a hard refresh.
-
-## 4. Close the loop: CORS
-
-1. Copy your final Vercel URL.
-2. In Render → your service → **Environment** → edit `CORS_ORIGINS`:
+1. **New → Web Service** → your repo.
+2. **Root Directory:** `backend` · **Build:** `pip install -r requirements.txt` · **Start:**
    ```
-   ["https://YOUR-APP.vercel.app"]
+   uvicorn app.main:app --host 0.0.0.0 --port $PORT
    ```
-3. **Save** — Render redeploys automatically. Test the app: pick seeds → generate Wrapped → recommendations should load.
+3. Environment:
+   - `PYTHON_VERSION=3.12.10`
+   - `CORS_ORIGINS` — flexible now! Any of these work:
+     ```
+     https://your-app.vercel.app
+     https://your-app.vercel.app,https://your-app-2.vercel.app
+     ["https://your-app.vercel.app"]
+     *
+     ```
+     (`*` allows all origins — fine for a demo, don't ship it in production)
+
+### 3b. Frontend on Vercel
+
+1. **Import the repo** → Framework: Vite → **Root Directory:** `spotify-frontend`.
+2. Environment variable: `VITE_API_URL` = your Render URL (**no trailing slash**).
+   ⚠️ This is a **build-time** variable — set it *before* deploying, and redeploy after changing it. A frontend built without it will call `localhost:8000` in your users' browsers and silently load nothing.
+3. Deploy. SPA refreshes are handled by `vercel.json` (in the repo).
+
+**Shortcut for Option 2:** instead of `VITE_API_URL` + CORS, add an API proxy to `vercel.json` and skip both:
+```json
+{"rewrites": [
+  {"source": "/api/:path*", "destination": "https://wrapped-api-xxxx.onrender.com/api/:path*"},
+  {"source": "/(.*)", "destination": "/index.html"}
+]}
+```
+The frontend then calls its own origin and Vercel proxies to the backend — no CORS, no env var. (This is why the frontend's default in production is same-origin.)
+
+## 4. Update the deployed app
+
+```bash
+git push origin main     # auto-redeploys both services
+```
+
+After changing seeds/data, regenerate artifacts locally first, commit them (`git add -f backend/*.npy backend/*.pkl`), then push.
 
 ## 5. Defeat cold starts (free)
 
-Render sleeps the free instance after 15 idle minutes. Keep it warm with a free uptime pinger:
+Render sleeps free services after 15 idle minutes. Keep warm with cron-job.org: ping `https://...onrender.com/health` every 10 minutes.
 
-1. Create an account at **cron-job.org**.
-2. Create a cron job: URL = `https://wrapped-api-xxxx.onrender.com/health`, every 10 minutes.
-3. Done — the API now answers in <100 ms around the clock.
+## 6. Alternative — Hugging Face Spaces (16 GB RAM, free)
 
-## 6. Update the deployed app
-
-```bash
-git push origin main        # Render + Vercel auto-redeploy on push
-```
-
-After changing seeds/data, regenerate artifacts locally first, commit them, then push:
-
-```bash
-npm run precompute
-git add -f backend/*.npy backend/*.pkl
-git commit -m "Refresh artifacts" && git push
-```
-
----
-
-## Alternative A — Koyeb (free, no spin-down policy differences)
-
-1. **app.koyeb.com** → **Create App → GitHub** → pick the repo.
-2. Builder: **Buildpack** · Workdir: `backend` · Run command:
-   ```
-   uvicorn app.main:app --host 0.0.0.0 --port 8000
-   ```
-   (Koyeb exposes port 8000 by default; set the **HTTP port** to 8000 in the service config.)
-3. Instance: **Free** (512 MB). Add the same env vars as Render (§2).
-4. Frontend: identical to §3, with `VITE_API_URL` pointing at the Koyeb URL.
-
-## Alternative B — Hugging Face Spaces (16 GB RAM, free)
-
-Best if you skip the downcast or want headroom. One extra wrinkle: files >10 MB need Git LFS, and Spaces listen on port 7860.
-
-1. Create a **Space** → **Docker** → blank.
-2. Clone the Space repo locally and copy in: `backend/` (code + artifacts), `dataset.csv`.
-3. Track big files with LFS:
-   ```bash
-   git lfs install
-   git lfs track "*.npy" "*.pkl" "*.csv"
-   git add .gitattributes
-   ```
-4. The Space needs its own `Dockerfile` at the root — reuse the backend one but expose HF's port:
-   ```dockerfile
-   FROM python:3.12-slim
-   WORKDIR /app
-   COPY backend/requirements.txt .
-   RUN pip install --no-cache-dir -r requirements.txt
-   COPY backend/ /app/
-   COPY dataset.csv /app/dataset.csv
-   ENV DATASET_PATH=/app/dataset.csv
-   EXPOSE 7860
-   CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
-   ```
-5. Add to the Space `README.md` front-matter so HF routes traffic:
+Same Dockerfile works. Steps:
+1. Create a **Space** → **Docker** → clone it locally.
+2. Copy in `backend/` (code + artifacts), `dataset.csv`, `spotify-frontend/`.
+3. `git lfs install && git lfs track "*.npy" "*.pkl" "*.csv"`
+4. Space `README.md` front-matter:
    ```yaml
    ---
-   title: Wrapped API
+   title: Wrapped
    sdk: docker
-   app_port: 7860
+   app_port: 8000
    ---
    ```
-6. Push. API lives at `https://YOUR-USER-wrapped-api.hf.space`. Spaces sleep after 48 h idle — much warmer than Render.
+5. Push — the container binds `$PORT` automatically. Sleeps after 48 h idle.
 
 ---
 
@@ -179,10 +133,10 @@ Best if you skip the downcast or want headroom. One extra wrinkle: files >10 MB 
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Browser console: CORS blocked | `CORS_ORIGINS` missing/misspelled frontend URL | Env var must be a JSON array: `["https://your-app.vercel.app"]` |
-| API returns `503 Artifacts not loaded` | Artifacts not committed to the repo | Re-run the `git add -f` block in §1, push |
-| Backend crashes at boot, `CORS_ORIGINS` error | Bare URL instead of JSON array | `["https://..."]` — quotes and brackets required |
-| First request takes ~1 min | Free-tier cold start (normal) | Keep-alive pinger (§5) or upgrade instance |
-| `GET /` returns 404 after refresh on Vercel/Netlify | SPA rewrite missing | `vercel.json` / `public/_redirects` are in the repo — make sure they were pushed |
-| Search returns 500 | Old deployed code | Redeploy latest `main` (NaN→None artwork fix landed) |
-| Render build OOM or timeout during precompute | You tried building artifacts on the server | Don't — precompute locally, commit artifacts (§1) |
+| Frontend loads but no data; console shows requests to `localhost:8000` | Frontend was built without `VITE_API_URL` | Set it on the frontend host **and redeploy** — or switch to Option 1 where it's unnecessary |
+| Frontend loads but no data; console shows CORS errors | Backend `CORS_ORIGINS` missing the frontend URL | Set it on the backend (now accepts a plain URL) and redeploy — or use Option 1 |
+| API returns `503 Artifacts not loaded` | Artifacts not committed | Re-run the `git add -f` block in §1, push |
+| Backend crashes at boot mentioning CORS | Old bare-string crash — fixed | Deploy latest `main`; the parser now accepts plain URLs, CSV lists, JSON arrays, and `*` |
+| First request takes ~1 min | Free-tier cold start (normal) | Keep-alive pinger (§5) |
+| `GET /home` 404 after refresh | SPA rewrite missing | Option 1 handles it in-code; Option 2 needs `vercel.json` (in repo) |
+| Docker build can't find `dataset.csv` / `.npy` | Stale `.dockerignore` | Latest repo excludes only venv/node_modules/git — pull latest |

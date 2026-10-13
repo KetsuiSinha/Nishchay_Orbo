@@ -1,6 +1,7 @@
 """
 Configuration settings for the Song Recommendation API.
 """
+import json
 from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,6 +13,11 @@ class Settings(BaseSettings):
     DATASET_PATH: str = Field(default="../dataset.csv", description="Path to the dataset CSV file")
     BACKEND_DIR: Path = Field(default=Path(__file__).parent.parent.parent, description="Backend directory")
     ARTIFACTS_DIR: Path = Field(default=Path(__file__).parent.parent.parent, description="Artifacts directory")
+    # Built frontend (served by the API when present — enables single-service deploys)
+    FRONTEND_DIST: Path = Field(
+        default=Path(__file__).parent.parent.parent.parent / "spotify-frontend" / "dist",
+        description="Built frontend directory (dist) to serve from the API",
+    )
 
     # Model hyperparameters
     TOP_K: int = Field(default=100, description="Number of similar tracks to keep per track")
@@ -30,10 +36,11 @@ class Settings(BaseSettings):
     HOST: str = Field(default="0.0.0.0", description="API host")
     PORT: int = Field(default=8000, description="API port")
 
-    # CORS
-    CORS_ORIGINS: List[str] = Field(
-        default=["http://localhost:5173", "http://localhost:3000"],
-        description="Allowed CORS origins",
+    # CORS — accepts a JSON array, a comma-separated list, or "*"
+    CORS_ORIGINS_RAW: str = Field(
+        default="http://localhost:5173,http://localhost:3000",
+        description="Allowed CORS origins (JSON array, comma-separated list, or *)",
+        alias="CORS_ORIGINS",
     )
 
     model_config = SettingsConfigDict(
@@ -47,6 +54,19 @@ class Settings(BaseSettings):
     def AUDIO_FEATURES(self) -> List[str]:
         """Parse comma-separated audio features string into list."""
         return [f.strip() for f in self.AUDIO_FEATURES_RAW.split(",") if f.strip()]
+
+    @property
+    def cors_origins(self) -> List[str]:
+        """Parse CORS_ORIGINS: JSON array, comma-separated list, or '*' for allow-all."""
+        raw = self.CORS_ORIGINS_RAW.strip()
+        if raw == "*":
+            return ["*"]
+        if raw.startswith("["):
+            try:
+                return [str(o) for o in json.loads(raw)]
+            except json.JSONDecodeError:
+                pass
+        return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 settings = Settings()

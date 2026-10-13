@@ -8,9 +8,31 @@ import type {
   WrappedRequest,
 } from "../types";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+/**
+ * Base URL resolution:
+ *  - VITE_API_URL env (build-time) always wins
+ *  - dev server → local backend on :8000
+ *  - production build → same origin (backend serves the built frontend)
+ *    so single-service deploys need zero configuration
+ */
+const isDev = import.meta.env.DEV;
+export const API_BASE_URL: string = (
+  import.meta.env.VITE_API_URL?.trim() || (isDev ? "http://localhost:8000" : "")
+).replace(/\/+$/, "");
 
-async function handle<T>(response: Response): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, init);
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error(
+        `Cannot reach the API at "${API_BASE_URL || "(same origin)"}". ` +
+          `Check that the backend is running and that CORS / VITE_API_URL are configured.`
+      );
+    }
+    throw err;
+  }
   if (!response.ok) {
     const error = await response
       .json()
@@ -21,35 +43,31 @@ async function handle<T>(response: Response): Promise<T> {
 }
 
 export const api = {
-  getGenres: (withCounts = false): Promise<GenresResponse> => {
-    const qs = withCounts ? "?with_counts=true" : "";
-    return fetch(`${API_BASE_URL}/api/v1/genres${qs}`).then((r) => handle(r));
-  },
+  getGenres: (withCounts = false): Promise<GenresResponse> =>
+    request(`/api/v1/genres${withCounts ? "?with_counts=true" : ""}`),
 
   searchTracks: (q: string, limit = 20): Promise<SearchResponse> => {
     const params = new URLSearchParams({ q, limit: String(limit) });
-    return fetch(`${API_BASE_URL}/api/v1/search?${params}`).then((r) => handle(r));
+    return request(`/api/v1/search?${params}`);
   },
 
   getRecommendations: (trackId: string, n = 20): Promise<RecommendationResponse> =>
-    fetch(`${API_BASE_URL}/api/v1/recommend`, {
+    request(`/api/v1/recommend`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ track_id: trackId, n_recommendations: n }),
-    }).then((r) => handle(r)),
+    }),
 
   getGenreTracks: (slug: string, limit = 20): Promise<GenreTracksResponse> =>
-    fetch(`${API_BASE_URL}/api/v1/genres/${encodeURIComponent(slug)}/tracks?limit=${limit}`).then(
-      (r) => handle(r)
-    ),
+    request(`/api/v1/genres/${encodeURIComponent(slug)}/tracks?limit=${limit}`),
 
   getArtist: (name: string): Promise<ArtistResponse> =>
-    fetch(`${API_BASE_URL}/api/v1/artists/${encodeURIComponent(name)}`).then((r) => handle(r)),
+    request(`/api/v1/artists/${encodeURIComponent(name)}`),
 
   generateWrapped: (seeds: WrappedRequest): Promise<WrappedPayload> =>
-    fetch(`${API_BASE_URL}/api/v1/wrapped`, {
+    request(`/api/v1/wrapped`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(seeds),
-    }).then((r) => handle(r)),
+    }),
 };

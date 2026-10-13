@@ -5,8 +5,10 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.api import routes
@@ -75,11 +77,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware — flexible parsing in settings (JSON array, CSV list, or "*")
+_origins = settings.cors_origins
+_wildcard = "*" in _origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=_origins,
+    allow_credentials=not _wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -91,6 +95,32 @@ app.include_router(routes.router, prefix="/api/v1")
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "1.0.0"}
+
+
+# ---------------------------------------------------------------------------
+# Optional: serve the built frontend (single-service deploys).
+# Activates automatically when spotify-frontend/dist exists. Registered LAST
+# so /api, /docs, /health etc. always win.
+# ---------------------------------------------------------------------------
+FRONTEND_DIST: Path | None = settings.FRONTEND_DIST if settings.FRONTEND_DIST.is_dir() else None
+
+if FRONTEND_DIST and (FRONTEND_DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="spa-assets")
+    logger.info(f"Serving frontend from {FRONTEND_DIST}")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        """SPA fallback: serve real files, route everything else to index.html."""
+        if full_path.startswith(("api/", "docs", "openapi.json", "redoc")):
+            raise HTTPException(status_code=404)
+        candidate = (FRONTEND_DIST / full_path).resolve()
+        if (
+            full_path
+            and candidate.is_file()
+            and str(candidate).startswith(str(FRONTEND_DIST.resolve()))
+        ):
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_DIST / "index.html")
 
 
 if __name__ == "__main__":
